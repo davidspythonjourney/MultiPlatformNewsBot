@@ -35,7 +35,7 @@ def write_to_db_metadata():
     # if os.path.exists('metadata'):
     #     with open('metadata', 'r') as f:
     #         msg_dict = json.load(f)
-    if json_laoder('metadata'):
+    if json_loader('metadata'):
         try:
             connection = mysql.connector.connect(**sql_dict)
             if connection.is_connected():
@@ -71,8 +71,6 @@ def write_to_db_metadata():
                 cursor.close()
                 connection.close()
                 print("MySQL connection is closed")
-
-
 
 
 
