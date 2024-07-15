@@ -4,7 +4,7 @@ import json
 from dotenv import load_dotenv
 import os
 import asyncio
-import datetime
+# import datetime
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")

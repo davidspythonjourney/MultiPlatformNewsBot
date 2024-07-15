@@ -32,20 +32,18 @@ class TwitterAPI:
         return TwitterAPI()._instance.client
 
 
-    
-
 # Verify credentials
 def verify_creds():
-    api = TwitterAPI.get_api()
+    api = TwitterAPI.get_client()
     try:
-        if api.verify_credentials():
+        if api.get_me():
          return True
     except Exception as e:
         print(f"Error during authentication: {e}")
     return False
         
     
-
+#create and post tweet using v2 endpoint
 def create_tweet(text: str):
     client = TwitterAPI.get_client()
     try:
