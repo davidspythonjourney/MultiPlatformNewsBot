@@ -12,3 +12,6 @@
 
 # Ignore all directories
 */
+
+# Ignore all JSON files
+*.json
