@@ -1,12 +1,18 @@
-from bot import handle_message
 from sql import *
 import json
-# from dotenv import load_dotenv
 import os
-# load_dotenv()
 from pathlib import Path
+# if i change import from sql change this as well
+# from dotenv import load_dotenv
+# load_dotenv()
+
+
+
 
 Image_directory = Path(os.getenv("IMAGE_DIR"))
+
+metadata_file = 'metadata'
+
 sql_dict = {
     "host": os.getenv('HOST'),
     "user": os.getenv('USER'),
@@ -14,6 +20,8 @@ sql_dict = {
     "database": os.getenv('DATABASE')
 }
 
+
+# handle creating/writing parsed metadata to file in json format
 def json_loader(file_path: str):
     
     if os.path.exists(file_path):
@@ -28,14 +36,11 @@ def json_loader(file_path: str):
         return None
 
 
-# think about how i can run my hadlke message fucntion return a result and parse that stuff tow rite to my sql
+# think about how i can run my handle message fucntion return a result and parse that stuff to write to my sql
 def write_to_db_metadata():
     
-    msg_dict = json_loader('metadata')
-    # if os.path.exists('metadata'):
-    #     with open('metadata', 'r') as f:
-    #         msg_dict = json.load(f)
-    if json_loader('metadata'):
+    msg_dict = json_loader(metadata_file)
+    if msg_dict:
         try:
             connection = mysql.connector.connect(**sql_dict)
             if connection.is_connected():
@@ -46,17 +51,17 @@ def write_to_db_metadata():
                         date_hour, date_minute, date_second, 
                         user_id, chat_id)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-                
+                #using "get" method to avoid errors
                 val = (
-                    msg_dict["message_id"],
-                    msg_dict["date"]["year"],
-                    msg_dict["date"]["month"],
-                    msg_dict["date"]["day"],
-                    msg_dict["date"]["hour"],
-                    msg_dict["date"]["minute"],
-                    msg_dict["date"]["second"],
-                    msg_dict["user"]["id"],
-                    msg_dict["chat_id"]
+                msg_dict.get("message_id"),
+                msg_dict.get("date", {}).get("year"),
+                msg_dict.get("date", {}).get("month"),
+                msg_dict.get("date", {}).get("day"),
+                msg_dict.get("date", {}).get("hour"),
+                msg_dict.get("date", {}).get("minute"),
+                msg_dict.get("date", {}).get("second"),
+                msg_dict.get("user", {}).get("id"),
+                msg_dict.get("chat_id")
                 )
                 
                 cursor.execute(sql, val)
@@ -92,8 +97,8 @@ def write_images_db():
                     connection.commit()
                     print(f"Record inserted successfully into Metadata table")
                     
-        except mysql.connector.Error as error:
-            print(f"Error connecting to MySQL: ")
+        except mysql.connector.Error as e:
+            print(f"Error connecting to MySQL: {e} ")
             
         finally:
             if connection.is_connected():
@@ -104,18 +109,15 @@ def write_images_db():
 
 def write_msg_db():
     
-    # if os.path.exists('metadata'):
-    #     with open('metadata', 'r') as f:
-    #         msg_dict = json.load(f)
-    # msg_text = msg_dict['content']['text']
-    msg_dict = json_loader('metadata')
+   
+    msg_dict = json_loader(metadata_file )
     if msg_dict:
         try:
             connection = mysql.connector.connect(**sql_dict)
             if connection.is_connected():
                 cursor = connection.cursor()
-                msg_text = msg_dict['content']['text']
-                msg_id = msg_dict['message_id']
+                msg_text = msg_dict.get('content', {}).get('text')
+                msg_id = msg_dict.get('message_id')
                 sql = "INSERT INTO Text (text_content, text_id) VALUES (%s, %s)"
                 cursor.execute(sql, (msg_text ,msg_id))
                 connection.commit()
@@ -131,10 +133,6 @@ def write_msg_db():
                     print("MySQL connection is closed")
         
 
-write_msg_db()
-
-
-
-    
+# write_msg_db()
 # write_to_db_metadata()
 # write_images_db()
