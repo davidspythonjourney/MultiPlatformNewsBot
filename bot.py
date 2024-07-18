@@ -4,7 +4,7 @@ import json
 from dotenv import load_dotenv
 import os
 import asyncio
-# import datetime
+
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
@@ -16,10 +16,10 @@ VID_DIR = os.getenv("VID_DIR")
 
 
 
-if not os.path.exists(IMAGE_DIR) and not os.path.exists(IMAGE_DIR):
+if not os.path.exists(IMAGE_DIR):
     os.makedirs(IMAGE_DIR)
+if not os.path.exists(VID_DIR):
     os.makedirs(VID_DIR)
-    
 
 
 #parses and returns meta data
