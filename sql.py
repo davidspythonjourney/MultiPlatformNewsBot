@@ -5,8 +5,6 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-# Replace with your MySQL credentials and database name from .env file
-
 
 
 # function to check and establish conenction with sql databse
