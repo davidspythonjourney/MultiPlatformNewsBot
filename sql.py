@@ -1,28 +1,32 @@
 import mysql.connector
-from dotenv import load_dotenv
-import os
-
-# Load environment variables from .env file
-load_dotenv()
-
-
+from utils import getSqlCreds
 
 # function to check and establish conenction with sql databse
-def try_connection(**kwargs:dict[str, str]):
-    sql_dict = {
-    "host": os.getenv('HOST'),
-    "user": os.getenv('USER'),
-    "password": os.getenv('PASSWORD'),
-    "database": os.getenv('DATABASE')
-}
+def createConnection(**kwargs: dict[str, str]):
     try:
-
-        connection = mysql.connector.connect(**sql_dict )
+        connection = mysql.connector.connect(**getSqlCreds())
         if connection.is_connected():
-            return connection 
+            return connection, connection.cursor() 
     except mysql.connector.Error as error:
         print(f"Error connecting to MySQL: {error}")
-    return None
+    return None, None
 
-# try_connection(**sql_dict)
+def closeConnections(connection = None, cursor = None):
+    if cursor:
+        try:
+            cursor.close()
+            print("Cursor is closed")
+        except mysql.connector.Error as error:
+            print(f"Error closing cursor: {error}")
+    
+    if connection:
+        try:
+            connection.close()
+            print("MySQL connection is closed")
+        except mysql.connector.Error as error:
+            print(f"Error closing connection: {error}")
+
+
+
+# createConnection(**getSqlCreds())
 
