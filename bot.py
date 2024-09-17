@@ -1,157 +1,88 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackContext
-import json
 from dotenv import load_dotenv
 import os
 import asyncio
-
+from telethon import events
+from telethon.sync import TelegramClient
+from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, DocumentAttributeVideo
+from utils import parseMessageMetadata, downloadMedia , jsonLoader, jsonWriter, ensureDirectoriesExist
+from typing import Dict, List, Callable, Any
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
-BOT_USERNAME= os.getenv("BOT_USERNAME")
-GROUP_ID = os.getenv("GROUP_ID")
 IMAGE_DIR = os.getenv("IMAGE_DIR")
 VID_DIR = os.getenv("VID_DIR")
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+METADATA_FILE = "metadata.json"
+COFFEE_MESSAGE_FILE = "coffee.txt"
+BOOST_MESSAGE_FILE = "boost.txt"
 
+client = TelegramClient('bot', API_ID, API_HASH).start(bot_token = TOKEN)
 
+@client.on(events.NewMessage)
+async def handler(event: events.NewMessage) -> None:
+    if event.grouped_id:
+        # parse multiple messages
+        await gatherAlbum(event, handleAlbum)
+    else:
+        #parse single message 
+        await handleMessage(event) 
 
+pending_albums = {}
+async def gatherAlbum(incoming_event: events.NewMessage, album_parsing_func: Callable[[List[events.NewMessage]], asyncio.Future]) -> None:
+    pending = pending_albums.get(incoming_event.grouped_id)
+    if pending:
+        pending.append(incoming_event)
+    else:
+        pending_albums[incoming_event.grouped_id] = [incoming_event]
+        # Wait for other events to come in.change for big batches
+        await asyncio.sleep(0.5)  
+        album_media = pending_albums.pop(incoming_event.grouped_id, [])
+        if album_media:
+            await album_parsing_func(album_media)
 
-if not os.path.exists(IMAGE_DIR):
-    os.makedirs(IMAGE_DIR)
-if not os.path.exists(VID_DIR):
-    os.makedirs(VID_DIR)
-
-
-#parses and returns meta data
-def parse_message_metadata(message):
+async def processMedia(message_metadata: Dict[str, any]) -> None:
+    media_types = {
+        "photo_object": IMAGE_DIR,
+        "video_object": VID_DIR
+        }
+    for media_type, media_dir in media_types.items():
+        media_for_download = message_metadata.get(media_type)
+        if media_for_download:
+            for media in media_for_download:
+                await downloadMedia(client, media, media_dir)   
+    if message_metadata.get("content").get("text"):
+        del message_metadata["photo_object"], message_metadata["video_object"], message_metadata["media"]
+        jsonWriter(message_metadata, METADATA_FILE)
     
-    metadata = {
-        "message_id": message.message_id,
-        "date": {
-            "year": message.date.year,
-            "month": message.date.month,
-            "day": message.date.day,
-            "hour": message.date.hour,
-            "minute": message.date.minute,
-            "second": message.date.second
-        },
-        "content": {
-            "text": message.caption if message.caption else message.text
-        },
-        "user": {
-            "id": message.from_user.id
-        },
-        "chat_id": message.chat_id,
-        "media": {}
-    }
-
-    # Save photo object
-    if message.photo:
-        slicing = len(message.photo) // 3  # Adjust slicing logic as needed
-        img_list = message.photo[-slicing:]
-        metadata["media"]["type"] = "photo"
-        metadata["media"]["photo_object"] = img_list
-
-    # Save video object
-    elif message.video:
-        metadata["media"]["type"] = "video"
-        metadata["media"]["video_object"] = message.video
-
-    return metadata
-    
-
+async def handleAlbum(media_events_batch: List[events.NewMessage]) -> None:
+    for event in media_events_batch:
+        metadata = parseMessageMetadata(event)
+        await processMedia(metadata)
+              
 # grabs sent messages in the group and saves to a  file
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    
-    metadata = parse_message_metadata(update.message)
-   
-   
-  
-    
-    if metadata['media'].get('photo_object'):
-        for i in metadata['media']['photo_object']:
-                file = await context.bot.get_file(i.file_id)
-                file_path = os.path.join(IMAGE_DIR,f"downloaded_image_{i.file_id}.jpg")# save to directory
-                await file.download_to_drive(file_path)
-
-            
-
-    if metadata['media'].get('video_object'):
-
-        video = metadata['media']['video_object']
-        file = await context.bot.get_file(video.file_id)
-        file_path = os.path.join(VID_DIR, f"downloaded_video_{video.file_id}.mp4")  # save to directory
-        await file.download_to_drive(file_path)
-
- 
-    # del metadata['media']
-    with open("metadata", "w") as f:
-        json.dump(metadata,f, indent=4, default=str)
-
-    # with open("message_content.txt", "a") as w:
-    #     json.dump(msg_info,indent=4)
-
-    
-            
-
-    
-    
-
-        
+async def handleMessage(single_msg: events.NewMessage) -> None:
+    metadata = parseMessageMetadata(single_msg)
+    if metadata.get("media"):
+        if isinstance(single_msg.media, MessageMediaPhoto):
+            await downloadMedia(client, single_msg.media, IMAGE_DIR) 
+        elif isinstance(single_msg.media, MessageMediaDocument):
+            if single_msg.video:
+                await downloadMedia(client, single_msg.media, VID_DIR)
+         
 # sends the coffe msg to the group 
-async def send_message_to_group(file_name: str):
-    try:
-        application = Application.builder().token(TOKEN).build()
-        bot = application.bot
-
-        group_chat_id = GROUP_ID
-        print(group_chat_id )
-        with open(file_name, "r") as msg:
-            message_text = msg.read()
-        await bot.send_message(chat_id=group_chat_id, text=message_text)
-
-    except Exception as e:
-        print(f"Error sending message: {e}")
-
+async def sendMessageToGroup(group_name: str, file_name: str) -> None:
+    message = jsonLoader(file_name)
+    if message:
+        await client.send_message(group_name, message )
+    
 def main():
     try:
-        application = Application.builder().token(TOKEN).build()
-
-        # Add a handler for regular messages (non-command text)
-        # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND | filters.TEXT &  filters.PHOTO, handle_message))
-        application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO, handle_message))
-
-        # Add a command handler for the /send command
-        application.add_handler(CommandHandler("send", lambda update, context: asyncio.create_task(send_message_to_group())))
-
-        # Start the application (assuming this runs the bot and starts handling updates)
-        application.run_polling()
-
+        ensureDirectoriesExist([VID_DIR, IMAGE_DIR ])
+        # Start the Telethon client
+        client.start()
+        print("Bot is running. Press Ctrl+Z to stop.")
+        # Block the script to keep it running
+        client.run_until_disconnected() 
     except KeyboardInterrupt:
         print("Bot stopped by keyboard interrupt")
-
-
-if __name__ == '__main__':
-    while True:
-        try:
-            value = int(input("Enter 1 to start the bot,\nEnter 2 to send a coffee message,\nEnter 3 for boost message: "))
-
-            if value == 1:
-                main()
-                break
-            elif value == 2:
-                asyncio.run(send_message_to_group("coffee.txt"))
-                break
-            elif value == 3:
-                asyncio.run(send_message_to_group("boost.txt"))
-                break
-            else:
-                print("Invalid input. Please enter either 1, 2, or 3.")
-        except ValueError:
-            print("Please enter a valid number (1, 2, or 3).")
-            
-        
-        
-    
-
-
