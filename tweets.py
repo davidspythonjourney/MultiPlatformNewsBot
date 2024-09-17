@@ -1,122 +1,85 @@
-import os
-from manage import parse_query
-import tweepy
-from tweepy.auth import OAuthHandler
-
-from dotenv import load_dotenv
-load_dotenv()
-
-twitter_creds = {
-    'bearer_token': os.getenv("BEARER_TOKEN"),
-    "consumer_key": os.getenv("CONSUMER_KEY"),
-    "consumer_secret": os.getenv("CONSUMER_SECRET"),
-    "access_token": os.getenv("ACCESS_TOKEN"),
-    "access_token_secret": os.getenv("ACCESS_TOKEN_SECRET")
-}
+from sqlWriter import parseQuery
+import tempfile
+from tweetApi import TwitterAPI
 
 
-#singleton pattern to ensure single twitter api object
-
-class TwitterAPI:
-    _instance = None
-
-    def __new__(cls):
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-            # Create v2 client
-            cls._instance.client = tweepy.Client(
-                consumer_key=os.getenv("CONSUMER_KEY"),
-                consumer_secret=os.getenv("CONSUMER_SECRET"),
-                access_token=os.getenv("ACCESS_TOKEN"),
-                access_token_secret=os.getenv("ACCESS_TOKEN_SECRET")
-            )
-            # Create v1.1 API
-            auth = OAuthHandler(
-                os.getenv("CONSUMER_KEY"),
-                os.getenv("CONSUMER_SECRET")
-            )
-            auth.set_access_token(
-                os.getenv("ACCESS_TOKEN"),
-                os.getenv("ACCESS_TOKEN_SECRET")
-            )
-            cls._instance.api = tweepy.API(auth)
-        return cls._instance
-
-    @staticmethod
-    def get_client():
-        return TwitterAPI()._instance.client
-
-    @staticmethod
-    def get_api():
-        return TwitterAPI()._instance.api
-    
 # Verify credentials
-def verify_creds():
-    api = TwitterAPI.get_client()
+def verifyCreds():
+    client = TwitterAPI.getClient()
     try:
-        if api.get_me():
+        if client.get_me():
          return True
     except Exception as e:
         print(f"Error during authentication: {e}")
     return False
-        
-    
+
+def uploadMedia(media_bytes: list, media_type :str) -> None:
+        api = TwitterAPI.getApi()
+        media_ids = []
+        if not media_bytes:
+            return
+        for bytes in media_bytes:
+            with tempfile.NamedTemporaryFile(delete = True, suffix = media_type) as temp_file:
+                temp_file.write(bytes)
+                temp_file.flush() 
+                media_uplaod_id = api.media_upload(filename = temp_file.name).media_id_string
+                media_ids.append(media_uplaod_id) 
+        return media_ids
+                
+#must handle parsing and uploading of single message no bigegr than list of 4 look into making a thread        
+def getMediaIds():
+    query_data = parseQuery() 
+    tweet_text = query_data.get("text")
+    if query_data.get('images_byte'):
+       image_media_ids =  uploadMedia(query_data.get('images_byte'), "jpeg")
+       
+    if query_data.get('videos'):
+       video_media_ids =  uploadMedia(query_data.get('images_byte'), "mp4")
+    all_media_ids = image_media_ids + video_media_ids    
+    return  all_media_ids, tweet_text
+
+
 #create and post tweet using v2 endpoint
-def create_tweet(text: str, media_ids=None):
-    client = TwitterAPI.get_client()
+def createSingleTweet(text: str, media_ids = None):
+    client = TwitterAPI.getClient()
     try:
-        response = client.create_tweet(text=text, media_ids=media_ids)
-        print(f"Tweet created successfully with ID: {response.data['id']}")
+        if media_ids:
+            client.create_tweet(text = text, media_ids = media_ids)
+        else:
+         client.create_tweet(text = text)
     except Exception as e:
         print(f"Error creating tweet: {e}")
-        
-# tweet_text = "This is my first tweet using tweepy API with Singleton pattern!"
-# create_tweet(tweet_text)
-
-
-
-
-
-def upload_media():
-    api = TwitterAPI.get_api()
-    try:
-        query_data = parse_query()
-        media_ids = []
-
-        # Upload images
-        for img_bytes in query_data['images_byte']:
-            media = api.media_upload(file=img_bytes)
-            media_ids.append(media.media_id)
-
-        # Upload videos (if supported and implemented)
-        for video_path in query_data['videos']:
-            # Note: Video upload might require chunked upload for larger files
-            media = api.media_upload(filename=video_path)
-            media_ids.append(media.media_id)
-
-        return media_ids
-    except Exception as e:
-        print(f"Error uploading media: {e}")
-        return None
-   
-   
-   
-def create_tweet_with_media():
-    query_data = parse_query()
-    print(query_data)
-    media_ids = upload_media()
     
+def createTweetThread(media_ids: list, text: str) -> None: 
+    client = TwitterAPI.getClient()
+    thread_id  = None
+    for index, media_id_group in enumerate(media_ids):
+        try:
+            if index == 0:
+                initial_tweet = client.create_tweet(text = text, media_ids = media_id_group)
+                thread_id = initial_tweet.data["id"]
+            else:
+                response_tweet = client.create_tweet(text = None, media_ids = media_id_group, in_reply_to_tweet_id = thread_id)# done keep text the same for some reason
+                thread_id = response_tweet.data["id"]
+        except Exception as e:
+            print(f"Error creating tweet thread: {e}")
+
+            
+def createTweetWithMedia():
+    split_ids = []
+    media_ids, text = getMediaIds()
     if media_ids:
-        tweet_text = query_data['text'] if query_data['text'] else "Check out this media!"
-        create_tweet(tweet_text, media_ids)
+        if len(media_ids) > 4:
+            for i in range(0, len(media_ids), 4):
+             split_ids.append(media_ids[i : i + 4])
+            createTweetThread(split_ids, text)
+        else:
+            createSingleTweet(text, media_ids)
     else:
-        print("Failed to upload media or no media to upload")
+        print("Failed to create single tweet/tweet thread")
+        
          
-tweet_text = "This is a tweet with media!"
-media_ids = upload_media()
-if media_ids:
-    create_tweet(tweet_text, media_ids)
-else:
-    print("Failed to upload media")
-    
-create_tweet_with_media()
+
+createTweetWithMedia()
+
+
