@@ -4,14 +4,47 @@
 # Ignore log files
 *.log
 
-# Ignore all .cache files
+# Ignore cache files
 *.cache
 
 # Ignore all .txt files
 *.txt
 
+# Ignore all JSON files
+*.json
+
 # Ignore all directories
 */
 
-# Ignore all JSON files
-*.json
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Telegram bot files (customize these patterns if you have specific file types or names)
+telegram_bot_files/
+*.bot
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore virtual environment directories
+venv/
+env/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore other common files and directories
+*.swp
+*.swo
+*.idea/
+*.vscode/
+
+# Ignore any temporary files
+*.tmp
+*.bak
+
+# Ignore build directories
+build/
+dist/
